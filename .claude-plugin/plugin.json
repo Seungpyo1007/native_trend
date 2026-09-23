@@ -1,7 +1,7 @@
 {
   "name": "native-trend",
-  "description": "Apply iOS 26 Liquid Glass to Flutter apps with plugins that use real native views, picked from live pub.dev data.",
-  "version": "0.1.0",
+  "description": "Apply the latest platform design trends to Flutter apps from live pub.dev data: native-view Liquid Glass on iOS, Material 3 Expressive on Android.",
+  "version": "0.2.0",
   "repository": "https://github.com/Seungpyo1007/native_trend",
   "license": "MIT",
   "author": {

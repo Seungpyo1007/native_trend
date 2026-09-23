@@ -1,62 +1,87 @@
 # native_trend
 
-Flutter's Cupertino library doesn't draw iOS 26 Liquid Glass
-([flutter#170310](https://github.com/flutter/flutter/issues/170310)). pub.dev
-has about 20 packages that claim to. Most of them imitate glass with shaders.
-Only a few embed real native iOS views, which is the only way to get Apple's
-actual effect.
+AI coding assistants learn from old data, and pub.dev has dozens of packages
+that claim to bring the latest platform look to Flutter. `native_trend`
+checks pub.dev live, picks the packages that actually deliver it, and writes
+the result to a file your assistant reads.
 
-`native_trend` searches pub.dev, scans each plugin's source for native views
-(`UiKitView`) and the iOS 26 glass API (`UIGlassEffect`, `.glassEffect`),
-ranks the native ones by pub.dev's own scores, and writes the result to a file
-your AI coding assistant reads.
+| Platform | Trend | What counts |
+| --- | --- | --- |
+| iOS | Liquid Glass (iOS 26) | Only plugins that embed **real native iOS views**. The OS draws the glass, so Flutter-drawn imitations are skipped. |
+| Android | Material 3 Expressive | The **official** flutter.dev `material_ui` first, then Flutter-drawn component packages, preferring ones built on `material_ui`. No pub.dev package renders M3 Expressive with native Android views today, and Material has always been drawn by Flutter. |
 
-## Find
+pub.dev does the validation. Discontinued packages are dropped, and
+everything else (points, likes, downloads, publisher) comes from pub.dev as-is.
+
+## Install
 
 ```sh
 dart pub global activate native_trend
-native_trend find --link CLAUDE.md
+```
+
+## iOS: Liquid Glass
+
+```sh
+native_trend find --platform ios --link CLAUDE.md
 ```
 
 ```
-native adaptive_platform_ui             160 pts   11477 dl/30d  native view + glass API
-native cupertino_native_better          160 pts    7393 dl/30d  native view + glass API
+use  adaptive_platform_ui               160 pts   11477 dl/30d  native view + glass API
+use  cupertino_native_better            160 pts    7393 dl/30d  native view + glass API
 ...
-native native_glass_navbar              150 pts    1465 dl/30d  native view, system controls
-skip   liquid_glass_widgets             160 pts   74887 dl/30d  Flutter-drawn imitation (no native code)
-skip   liquid_glass_renderer            150 pts   25481 dl/30d  Flutter-drawn imitation (no native code)
+use  native_glass_navbar                150 pts    1465 dl/30d  native view, system controls
+skip liquid_glass_widgets               160 pts   74887 dl/30d  Flutter-drawn imitation (no native code)
+skip liquid_glass_renderer              150 pts   25481 dl/30d  Flutter-drawn imitation (no native code)
 ```
 
-| Kind | Meaning |
-| --- | --- |
-| native view + glass API | Embeds a native view and calls the iOS 26 glass API directly. |
-| native view, system controls | Embeds native system controls (tab bar, nav bar), which get glass from the iOS 26 SDK. |
-| plugin without a native view | Has native code but no platform view. Skipped. |
-| Flutter-drawn imitation | Pure Dart or shaders. Skipped. |
+Each plugin's source is scanned for a platform view (`UiKitView`) and the iOS
+26 glass API (`UIGlassEffect`, `.glassEffect`). Neither Flutter's Cupertino
+library nor the official `cupertino_ui` package implements Liquid Glass yet
+([flutter#170310](https://github.com/flutter/flutter/issues/170310)).
 
-Discontinued packages are dropped. Everything else (points, likes,
-downloads, publisher) comes from pub.dev as-is.
+## Android: Material 3 Expressive
 
-`.ai/native_trend.md` holds the ranking, Apple's Liquid Glass rules, and notes
-on applying it. `--link` adds a pointer to that file in `CLAUDE.md`,
-`AGENTS.md`, or any other file your assistant reads.
+```sh
+native_trend find --platform android --link CLAUDE.md
+```
 
-Options: `--dir <project root>`, `--out <path>` (default `.ai/native_trend.md`).
+```
+use  material_ui                        160 pts 1178956 dl/30d  official flutter.dev package
+use  m3e_core                           160 pts    2132 dl/30d  Flutter-drawn, built on material_ui
+use  m3e_buttons                        160 pts    2120 dl/30d  Flutter-drawn, built on material_ui
+...
+use  expressive_loading_indicator       160 pts   17211 dl/30d  Flutter-drawn
+```
+
+`material_ui` is checked on every run. Today it defines
+`StyleVariant.material3Expressive` but `ThemeData` doesn't accept it yet, so
+the context file tells the assistant to use only the official color scheme
+(`DynamicSchemeVariant.expressive`) and packages for the rest. When
+`material_ui` wires the option in, the context switches to the official
+opt-in automatically.
+
+## Options
+
+- `--platform ios|android` (default `ios`)
+- `--dir <path>`: project root (default `.`)
+- `--out <path>`: output file (default `.ai/native_trend_<platform>.md`)
+- `--link <file>`: add a one-line pointer to the output in `CLAUDE.md`,
+  `AGENTS.md`, or any other file your assistant reads. Repeatable.
 
 ## Apply with Claude Code
 
-This repository is also a Claude Code plugin with a `liquid-glass` skill. The
-skill runs `find`, lets you pick a package, reads its README, converts only
-your navigation and control widgets (behind an iOS-only branch when the package has no fallback), and
-applies Apple's rules.
+This repository is also a Claude Code plugin with two skills:
+
+- `liquid-glass`: runs `find --platform ios`, lets you pick a package, reads
+  its README and source, and converts only your navigation and control
+  widgets (behind an iOS-only branch when the package has no fallback),
+  following Apple's rules.
+- `material-expressive`: runs `find --platform android`, applies the official
+  part first, then converts only the components you choose.
 
 ```
 /plugin marketplace add Seungpyo1007/native_trend
 /plugin install native-trend@native-trend
 ```
 
-Glass only shows in iOS builds made with Xcode 26 or later.
-
-## Roadmap
-
-Android (Material 3 Expressive with native views) comes next.
+Liquid Glass only shows in iOS builds made with Xcode 26 or later.
