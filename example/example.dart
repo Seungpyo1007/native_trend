@@ -6,7 +6,7 @@ Future<void> main() async {
   final client = http.Client();
   try {
     final r = await fetchPackage(client, 'cupertino_native_better');
-    final archive = isIosPlugin(r.package)
+    final archive = isPluginFor(r.package, 'ios')
         ? await fetchArchiveText(
             client,
             r.package['latest']['archive_url'] as String,
@@ -15,7 +15,7 @@ Future<void> main() async {
     final c = Candidate.fromJson(
       package: r.package,
       score: r.score,
-      kind: classify(archive),
+      kind: classifyGlass(archive),
     );
     print(renderText([c]));
   } finally {

@@ -8,7 +8,7 @@
     {
       "name": "native-trend",
       "source": "./",
-      "description": "Apply iOS 26 Liquid Glass to Flutter apps with plugins that use real native views."
+      "description": "Native-view Liquid Glass on iOS and Material 3 Expressive on Android for Flutter apps."
     }
   ]
 }

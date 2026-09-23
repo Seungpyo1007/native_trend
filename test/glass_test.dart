@@ -35,20 +35,23 @@ Candidate candidate(String name, Kind kind, {int points = 160, int dl = 0}) =>
     );
 
 void main() {
-  test('isIosPlugin reads the pubspec', () {
-    expect(isIosPlugin(package('a')), isTrue);
-    expect(isIosPlugin(package('b', iosPlugin: false)), isFalse);
+  test('isPluginFor reads the pubspec', () {
+    expect(isPluginFor(package('a'), 'ios'), isTrue);
+    expect(isPluginFor(package('b', iosPlugin: false), 'ios'), isFalse);
   });
 
   test('classify by archive markers', () {
     expect(
-      classify('UiKitView(...) let e = UIGlassEffect()'),
+      classifyGlass('UiKitView(...) let e = UIGlassEffect()'),
       Kind.nativeGlass,
     );
-    expect(classify('AppKitView ... .glassEffect(.regular)'), Kind.nativeGlass);
-    expect(classify('UiKitView(viewType: "tabbar")'), Kind.nativeSystem);
-    expect(classify('MethodChannel only'), Kind.noNativeView);
-    expect(classify(null), Kind.notPlugin);
+    expect(
+      classifyGlass('AppKitView ... .glassEffect(.regular)'),
+      Kind.nativeGlass,
+    );
+    expect(classifyGlass('UiKitView(viewType: "tabbar")'), Kind.nativeSystem);
+    expect(classifyGlass('MethodChannel only'), Kind.noNativeView);
+    expect(classifyGlass(null), Kind.notPlugin);
   });
 
   test('rank puts native glass first, then points, then downloads', () {
@@ -69,7 +72,7 @@ void main() {
   });
 
   test('context recommends the top native and lists skipped', () {
-    final md = renderContext(
+    final md = renderGlassContext(
       rank([
         candidate('shader', Kind.notPlugin),
         candidate('good', Kind.nativeGlass),

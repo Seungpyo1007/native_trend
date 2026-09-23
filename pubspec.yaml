@@ -1,14 +1,14 @@
 name: native_trend
 description: >-
-  Finds Flutter plugins that render iOS 26 Liquid Glass with real native
-  views and writes an AI context file to apply them.
-version: 0.1.0
+  Picks pub.dev packages for the latest platform design trends: native-view
+  Liquid Glass on iOS, Material 3 Expressive on Android. Writes AI context.
+version: 0.2.0
 repository: https://github.com/Seungpyo1007/native_trend
 issue_tracker: https://github.com/Seungpyo1007/native_trend/issues
 topics:
   - liquid-glass
   - ios
-  - cupertino
+  - material-design
   - cli
   - ai
 
