@@ -1,0 +1,10 @@
+{
+  "name": "native-trend",
+  "description": "Apply iOS 26 Liquid Glass to Flutter apps with plugins that use real native views, picked from live pub.dev data.",
+  "version": "0.1.0",
+  "repository": "https://github.com/Seungpyo1007/native_trend",
+  "license": "MIT",
+  "author": {
+    "name": "Seungpyo1007"
+  }
+}

@@ -1,0 +1,28 @@
+name: native_trend
+description: >-
+  Finds Flutter plugins that render iOS 26 Liquid Glass with real native views,
+  ranks them with pub.dev scores, and writes an AI context file so coding
+  assistants apply them the way Apple's guidelines expect.
+version: 0.1.0
+repository: https://github.com/Seungpyo1007/native_trend
+issue_tracker: https://github.com/Seungpyo1007/native_trend/issues
+topics:
+  - liquid-glass
+  - ios
+  - cupertino
+  - cli
+  - ai
+
+environment:
+  sdk: ^3.9.0
+
+executables:
+  native_trend:
+
+dependencies:
+  args: ^2.7.0
+  http: ^1.6.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.32.0

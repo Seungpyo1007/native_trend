@@ -1,0 +1,14 @@
+{
+  "name": "native-trend",
+  "description": "Flutter plugins that follow platform design trends with real native views.",
+  "owner": {
+    "name": "Seungpyo1007"
+  },
+  "plugins": [
+    {
+      "name": "native-trend",
+      "source": "./",
+      "description": "Apply iOS 26 Liquid Glass to Flutter apps with plugins that use real native views."
+    }
+  ]
+}
