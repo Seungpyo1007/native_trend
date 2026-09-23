@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         # Lowest supported release from pubspec.yaml, plus the current stable.
-        sdk: ['3.9.0', stable]
+        sdk: ['3.10.0', stable]
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
