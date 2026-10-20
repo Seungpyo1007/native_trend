@@ -45,12 +45,13 @@ void main() {
       classifyGlass('UiKitView(...) let e = UIGlassEffect()'),
       Kind.nativeGlass,
     );
-    expect(
-      classifyGlass('AppKitView ... .glassEffect(.regular)'),
-      Kind.nativeGlass,
-    );
     expect(classifyGlass('UiKitView(viewType: "tabbar")'), Kind.nativeSystem);
     expect(classifyGlass('MethodChannel only'), Kind.noNativeView);
+    expect(
+      classifyGlass('AppKitView ... NSGlassEffectView'),
+      Kind.noNativeView,
+      reason: 'a macOS view is not an iOS view',
+    );
     expect(classifyGlass(null), Kind.notPlugin);
   });
 

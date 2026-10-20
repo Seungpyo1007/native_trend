@@ -1,11 +1,11 @@
 ---
 name: liquid-glass
-description: Apply iOS 26 Liquid Glass to a Flutter app using a plugin that embeds real native iOS views, chosen from live pub.dev data and applied per Apple's guidelines. Use when the user wants Liquid Glass, iOS 26 glass, or native iOS tab bars, nav bars, or buttons in Flutter.
+description: Apply iOS 26 Liquid Glass to a Flutter app using a plugin that embeds real native iOS views, chosen from live pub.dev data and applied per Apple's guidelines. Use when the user wants Liquid Glass, iOS 26 glass, or native iOS tab bars, nav bars, or buttons in Flutter. For macOS apps, use macos-glass.
 ---
 
 # Liquid Glass for Flutter
 
-Flutter's Cupertino library does not draw Liquid Glass. Use a plugin that embeds real native iOS views, never a BackdropFilter or shader imitation.
+Flutter's Cupertino library does not draw Liquid Glass. Use a plugin that embeds real native iOS views, never a BackdropFilter or shader imitation. For a Flutter macOS app, use the `macos-glass` skill.
 
 1. From the Flutter project root, run:
    ```

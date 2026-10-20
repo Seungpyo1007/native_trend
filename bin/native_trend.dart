@@ -6,12 +6,21 @@ import 'package:native_trend/native_trend.dart';
 
 const _usage = '''
 Usage: native_trend find [options]
+       native_trend audit [options]
 
-Finds the pub.dev packages that best follow the platform's design trend,
-prints them ranked, and writes an AI context file.
+find: finds the pub.dev packages that best follow the platform's design
+trend, prints them ranked, and writes an AI context file.
   ios:     Liquid Glass plugins that use real native iOS views
+  macos:   Liquid Glass plugins that use real native AppKit views
   android: Material 3 Expressive, official material_ui first
+
+audit: checks the project's dependencies against the same rankings and
+exits with 1 when one should be replaced.
 ''';
+
+const _platforms = ['ios', 'android', 'macos'];
+const _cacheHelp =
+    'Keep downloaded package archives in the user cache directory.';
 
 Future<void> main(List<String> args) async {
   final parser = ArgParser()
@@ -19,8 +28,9 @@ Future<void> main(List<String> args) async {
     ..addCommand(
       'find',
       ArgParser()
-        ..addOption('platform', allowed: ['ios', 'android'], defaultsTo: 'ios')
+        ..addOption('platform', allowed: _platforms, defaultsTo: 'ios')
         ..addOption('dir', defaultsTo: '.', help: 'Project root.')
+        ..addFlag('cache', defaultsTo: true, help: _cacheHelp)
         ..addOption(
           'out',
           help: 'Output path. Default: .ai/native_trend_<platform>.md',
@@ -31,6 +41,17 @@ Future<void> main(List<String> args) async {
               'Add a pointer to the output in these files, '
               'e.g. AGENTS.md or CLAUDE.md.',
         ),
+    )
+    ..addCommand(
+      'audit',
+      ArgParser()
+        ..addMultiOption(
+          'platform',
+          allowed: _platforms,
+          defaultsTo: _platforms,
+        )
+        ..addOption('dir', defaultsTo: '.', help: 'Project root.')
+        ..addFlag('cache', defaultsTo: true, help: _cacheHelp),
     );
 
   final ArgResults opts;
@@ -46,26 +67,52 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  final platform = cmd.option('platform')!;
+  final dir = cmd.option('dir')!;
+  final cache = cmd.flag('cache') ? defaultCacheDir() : null;
+  Set<String>? deps;
+  if (cmd.name == 'audit') {
+    final pubspec = File('$dir/pubspec.yaml');
+    if (!pubspec.existsSync()) {
+      stderr.writeln('No pubspec.yaml in $dir');
+      exit(66);
+    }
+    deps = pubspecDependencies(pubspec.readAsStringSync());
+  }
   final client = http.Client();
-  final (List<Candidate>, String) result;
   try {
-    result = platform == 'ios'
-        ? await _glass(client)
-        : await _expressive(client);
+    if (deps == null) {
+      await _findAndWrite(client, cache, cmd, dir);
+    } else if (!await _audit(
+      client,
+      cache,
+      deps,
+      cmd.multiOption('platform'),
+    )) {
+      exitCode = 1;
+    }
   } finally {
     client.close();
   }
-  final (ranked, context) = result;
+}
+
+Future<void> _findAndWrite(
+  http.Client client,
+  Directory? cache,
+  ArgResults cmd,
+  String dir,
+) async {
+  final platform = cmd.option('platform')!;
+  final (ranked, context) = await _find(client, cache, platform);
   stdout.writeln(renderText(ranked));
 
-  final dir = cmd.option('dir')!;
   final rel = cmd.option('out') ?? '.ai/native_trend_$platform.md';
   final out = File('$dir/$rel');
   out.parent.createSync(recursive: true);
   out.writeAsStringSync(context);
   stdout.writeln('\nWrote ${out.path}');
-  final topic = platform == 'ios' ? 'Liquid Glass' : 'Material 3 Expressive';
+  final topic = platform == 'android'
+      ? 'Material 3 Expressive'
+      : 'Liquid Glass';
   for (final name in cmd.multiOption('link')) {
     final target = File('$dir/$name');
     final text = target.existsSync() ? target.readAsStringSync() : '';
@@ -78,12 +125,80 @@ Future<void> main(List<String> args) async {
   }
 }
 
-Future<(List<Candidate>, String)> _glass(http.Client client) async {
+/// Returns true when every matching dependency is worth keeping.
+Future<bool> _audit(
+  http.Client client,
+  Directory? cache,
+  Set<String> deps,
+  List<String> platforms,
+) async {
+  var clean = true;
+  for (final platform in platforms) {
+    final matched = (await _candidateNames(
+      client,
+      platform,
+    )).intersection(deps);
+    if (matched.isEmpty) {
+      stdout.writeln(renderAudit(platform, const []));
+      continue;
+    }
+    final (ranked, _) = await _find(client, cache, platform);
+    final ranks = {for (final c in ranked) c.name};
+    // Unranked matches are either search noise or discontinued.
+    final discontinued = <String, String?>{};
+    for (final name in matched.difference(ranks)) {
+      try {
+        final r = await fetchPackage(client, name);
+        if (r.package['isDiscontinued'] == true) {
+          discontinued[name] = r.package['replacedBy'] as String?;
+        }
+      } on Exception catch (e) {
+        stderr.writeln('skip $name: $e');
+      }
+    }
+    final findings = auditDependencies(
+      deps,
+      ranked,
+      discontinued: discontinued,
+    );
+    stdout.writeln(renderAudit(platform, findings));
+    if (findings.any((f) => !f.ok)) clean = false;
+  }
+  return clean;
+}
+
+/// Package names worth fetching for [platform], before any filtering.
+Future<Set<String>> _candidateNames(
+  http.Client client,
+  String platform,
+) async => switch (platform) {
+  'ios' => {...await search(client, glassQuery)},
+  'macos' => {...macosGlassSeeds, ...await search(client, macosGlassQuery)},
+  _ => {
+    officialMaterial,
+    for (final q in expressiveQueries) ...await search(client, q),
+  },
+};
+
+Future<(List<Candidate>, String)> _find(
+  http.Client client,
+  Directory? cache,
+  String platform,
+) => platform == 'android'
+    ? _expressive(client, cache)
+    : _glass(client, cache, platform);
+
+Future<(List<Candidate>, String)> _glass(
+  http.Client client,
+  Directory? cache,
+  String platform,
+) async {
+  final names = await _candidateNames(client, platform);
   final out = <Candidate>[];
-  for (final r in await _fetchAll(client, await search(client, glassQuery))) {
+  for (final r in await _fetchAll(client, names)) {
     final String? archive;
     try {
-      archive = await _archiveIfPlugin(client, r.package, 'ios');
+      archive = await _archiveIfPlugin(client, cache, r.package, platform);
     } on Exception catch (e) {
       stderr.writeln('skip ${r.package['name']}: $e');
       continue;
@@ -92,19 +207,24 @@ Future<(List<Candidate>, String)> _glass(http.Client client) async {
       Candidate.fromJson(
         package: r.package,
         score: r.score,
-        kind: classifyGlass(archive),
+        kind: classifyGlass(archive, platform: platform),
       ),
     );
   }
   final ranked = rank(out);
-  return (ranked, renderGlassContext(ranked));
+  return (
+    ranked,
+    platform == 'ios'
+        ? renderGlassContext(ranked)
+        : renderMacosGlassContext(ranked),
+  );
 }
 
-Future<(List<Candidate>, String)> _expressive(http.Client client) async {
-  final names = {
-    officialMaterial,
-    for (final q in expressiveQueries) ...await search(client, q),
-  };
+Future<(List<Candidate>, String)> _expressive(
+  http.Client client,
+  Directory? cache,
+) async {
+  final names = await _candidateNames(client, 'android');
   final out = <Candidate>[];
   var officialOptIn = false;
   for (final r in await _fetchAll(client, names)) {
@@ -114,8 +234,8 @@ Future<(List<Candidate>, String)> _expressive(http.Client client) async {
     final String? archive;
     try {
       archive = isOfficial
-          ? await _archive(client, r.package)
-          : await _archiveIfPlugin(client, r.package, 'android');
+          ? await _archive(client, cache, r.package)
+          : await _archiveIfPlugin(client, cache, r.package, 'android');
     } on Exception catch (e) {
       stderr.writeln('skip $name: $e');
       continue;
@@ -155,16 +275,24 @@ _fetchAll(http.Client client, Iterable<String> names) async {
   ];
 }
 
-Future<String> _archive(http.Client client, Map<String, dynamic> package) {
+Future<String> _archive(
+  http.Client client,
+  Directory? cache,
+  Map<String, dynamic> package,
+) {
   stderr.writeln('scanning ${package['name']} ...');
-  // ponytail: archives are 1-50 MB and fetched one at a time with no cache;
-  // add a cache dir if repeat runs get slow.
-  return fetchArchiveText(client, package['latest']['archive_url'] as String);
+  return fetchArchiveText(
+    client,
+    package['latest']['archive_url'] as String,
+    cache: cache,
+  );
 }
 
 Future<String?> _archiveIfPlugin(
   http.Client client,
+  Directory? cache,
   Map<String, dynamic> package,
   String platform,
-) async =>
-    isPluginFor(package, platform) ? await _archive(client, package) : null;
+) async => isPluginFor(package, platform)
+    ? await _archive(client, cache, package)
+    : null;
