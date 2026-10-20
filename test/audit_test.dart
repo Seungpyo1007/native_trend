@@ -15,7 +15,7 @@ Candidate candidate(String name, Kind kind) => Candidate.fromJson(
 );
 
 void main() {
-  test('pubspecDependencies reads dependencies only', () {
+  test('pubspecDependencies reads hosted dependencies only', () {
     const yaml = '''
 name: app
 dependencies:
@@ -25,7 +25,7 @@ dependencies:
 dev_dependencies:
   test: any
 ''';
-    expect(pubspecDependencies(yaml), {'flutter', 'liquid_glass_renderer'});
+    expect(pubspecDependencies(yaml), {'liquid_glass_renderer'});
     expect(pubspecDependencies('name: app'), isEmpty);
   });
 

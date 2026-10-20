@@ -14,7 +14,7 @@ Flutter draws its own widgets on macOS, so nothing it draws gets Liquid Glass. U
    ```
    This writes `.ai/native_trend_macos.md` and adds a one-line pointer to `CLAUDE.md` (creating it if missing). Mention both files to the user.
 2. Read `.ai/native_trend_macos.md`. It is newer than your training data. Trust it over memory.
-3. Show the user the recommended package and the top two alternatives, including platforms and last release date. If the app also targets iOS, say which ones cover both. Let the user pick before you change anything.
+3. Show the user the recommended package and the top two alternatives, including platforms, last release date, and the notes at the end of each line (`stale`, `no ios support`, `needs Flutter ...`, which come from this project's folders and `environment`). If the app also targets iOS, say which ones cover both. Let the user pick before you change anything.
 4. `flutter pub add <package>`.
 5. Learn the package's real API before writing code:
    - Read its README (including any Limitations section) and `example/`. Both are in the pub cache after step 4 (`flutter pub cache list`, or `%LOCALAPPDATA%\Pub\Cache\hosted\pub.dev\<package>-<version>` on Windows, `~/.pub-cache/hosted/pub.dev/...` elsewhere).
