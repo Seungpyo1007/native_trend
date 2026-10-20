@@ -8,7 +8,7 @@
     {
       "name": "native-trend",
       "source": "./",
-      "description": "Native-view Liquid Glass on iOS and Material 3 Expressive on Android for Flutter apps."
+      "description": "Native-view Liquid Glass on iOS and macOS and Material 3 Expressive on Android for Flutter apps."
     }
   ]
 }

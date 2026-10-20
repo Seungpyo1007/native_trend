@@ -1,18 +1,19 @@
 /// How a package delivers the platform's design trend, in ranking order.
 ///
-/// iOS and Android kinds never mix in one ranking, so the index order is the
-/// ranking order within each platform.
+/// Glass (iOS, macOS) and Android kinds never mix in one ranking, so the
+/// index order is the ranking order within each platform.
 enum Kind {
-  /// iOS: native view that calls the iOS 26 glass API directly.
+  /// iOS, macOS: native view that calls the glass API directly.
   nativeGlass('native view + glass API', usable: true),
 
-  /// iOS: native view of system controls, which get glass from the iOS 26 SDK.
+  /// iOS, macOS: native view of system controls, which get glass from the
+  /// 26 SDKs.
   nativeSystem('native view, system controls', usable: true),
 
-  /// iOS: plugin, but no platform view.
+  /// iOS, macOS: plugin, but no platform view.
   noNativeView('plugin without a native view'),
 
-  /// iOS: pure Dart, usually a shader imitation.
+  /// iOS, macOS: pure Dart, usually a shader imitation.
   notPlugin('Flutter-drawn imitation (no native code)'),
 
   /// Android: the official flutter.dev Material package.
