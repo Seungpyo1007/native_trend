@@ -38,10 +38,23 @@ Kind classifyExpressive(Map<String, dynamic> package, {String? archiveText}) {
 }
 
 /// True when material_ui's `ThemeData` accepts a `styleVariant`, i.e. the
-/// official Expressive opt-in has landed. Pass the material_ui archive text.
-bool styleVariantWired(String materialUiArchive) => RegExp(
-  r'StyleVariant\??\s+(get\s+)?styleVariant',
-).hasMatch(materialUiArchive);
+/// official Expressive opt-in has landed. Pass the material_ui source text.
+///
+/// Only the `ThemeData` class counts: `IconButton` has its own
+/// `styleVariant` field (material_ui 1.7.0 and later).
+bool styleVariantWired(String materialUiSource) {
+  final start = RegExp(r'\bclass ThemeData\b').firstMatch(materialUiSource);
+  if (start == null) return false;
+  final end = materialUiSource.indexOf(
+    RegExp(r'\n(?:(?:abstract|base|final|interface|sealed|mixin) )*class '),
+    start.end,
+  );
+  final body = materialUiSource.substring(
+    start.start,
+    end < 0 ? materialUiSource.length : end,
+  );
+  return RegExp(r'StyleVariant\??\s+(get\s+)?styleVariant').hasMatch(body);
+}
 
 /// Markdown for AI coding assistants.
 String renderExpressiveContext(

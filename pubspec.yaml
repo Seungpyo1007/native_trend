@@ -2,7 +2,7 @@ name: native_trend
 description: >-
   Picks pub.dev packages for the latest platform design trends: native-view
   Liquid Glass on iOS and macOS, Material 3 Expressive on Android.
-version: 0.3.0
+version: 0.4.0
 repository: https://github.com/Seungpyo1007/native_trend
 issue_tracker: https://github.com/Seungpyo1007/native_trend/issues
 topics:
@@ -21,6 +21,7 @@ executables:
 dependencies:
   args: ^2.7.0
   http: ^1.6.0
+  pub_semver: ^2.2.0
   yaml: ^3.1.3
 
 dev_dependencies:

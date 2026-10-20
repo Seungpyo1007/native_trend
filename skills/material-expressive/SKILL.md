@@ -23,7 +23,7 @@ Material is drawn by Flutter itself, so the goal is to use what is official, the
    - If the opt-in is available, follow its instructions.
 5. Ask the user which components they want in Expressive style (for example buttons, loading indicator, FAB menu, toolbar, navigation bar). Mention that converting some widgets but not others on one screen mixes spring motion with the old easing.
 6. Choose packages from the ranked list:
-   - Only packages whose platforms cover the project's targets, and whose `environment` fits the Flutter version.
+   - Only packages whose platforms cover the project's targets, and whose `environment` fits the Flutter version. The notes at the end of each line (`no ios support`, `needs Flutter 3.47.0+ ...`, `stale`) already compare against this project; still check `flutter --version` for the SDK actually installed.
    - One publisher for all components if possible (the publisher is in each line; name prefixes like `m3e_*` are not families).
    - A package "built on material_ui" requires migrating the app to material_ui. Tell the user, and ask whether to migrate or to use "Flutter-drawn" packages instead.
    - Descriptions don't list every component. If unsure, check the package's `lib/` after adding it.

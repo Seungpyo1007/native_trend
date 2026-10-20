@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/args.dart';
@@ -7,33 +8,51 @@ import 'package:native_trend/native_trend.dart';
 const _usage = '''
 Usage: native_trend find [options]
        native_trend audit [options]
+       native_trend cache clean|path
 
 find: finds the pub.dev packages that best follow the platform's design
-trend, prints them ranked, and writes an AI context file.
+trend, prints them ranked, and writes an AI context file per platform.
   ios:     Liquid Glass plugins that use real native iOS views
   macos:   Liquid Glass plugins that use real native AppKit views
   android: Material 3 Expressive, official material_ui first
+Without --platform, uses the platform folders in --dir (ios if none).
 
 audit: checks the project's dependencies against the same rankings and
 exits with 1 when one should be replaced.
+
+cache: deletes or prints the package archive cache.
+
+Exit codes: 0 ok, 1 audit found a dependency to replace, 64 bad usage,
+66 no pubspec.yaml, 69 pub.dev unreachable.
 ''';
 
-const _platforms = ['ios', 'android', 'macos'];
+const _platformHelp = 'ios, android, macos, or all. Repeatable or comma list.';
 const _cacheHelp =
     'Keep downloaded package archives in the user cache directory.';
+
+ArgParser _common(ArgParser p) => p
+  ..addMultiOption(
+    'platform',
+    allowed: [...trendPlatforms, 'all'],
+    help: _platformHelp,
+  )
+  ..addOption('dir', defaultsTo: '.', help: 'Project root.')
+  ..addFlag('cache', defaultsTo: true, help: _cacheHelp)
+  ..addOption('pages', defaultsTo: '3', help: 'pub.dev search pages per query.')
+  ..addFlag('json', negatable: false, help: 'Print JSON instead of text.');
 
 Future<void> main(List<String> args) async {
   final parser = ArgParser()
     ..addFlag('help', abbr: 'h', negatable: false)
+    ..addFlag('version', negatable: false, help: 'Print the version.')
     ..addCommand(
       'find',
-      ArgParser()
-        ..addOption('platform', allowed: _platforms, defaultsTo: 'ios')
-        ..addOption('dir', defaultsTo: '.', help: 'Project root.')
-        ..addFlag('cache', defaultsTo: true, help: _cacheHelp)
+      _common(ArgParser())
         ..addOption(
           'out',
-          help: 'Output path. Default: .ai/native_trend_<platform>.md',
+          help:
+              'Output path, with one platform only. '
+              'Default: .ai/native_trend_<platform>.md',
         )
         ..addMultiOption(
           'link',
@@ -42,257 +61,182 @@ Future<void> main(List<String> args) async {
               'e.g. AGENTS.md or CLAUDE.md.',
         ),
     )
+    ..addCommand('audit', _common(ArgParser()))
     ..addCommand(
-      'audit',
+      'cache',
       ArgParser()
-        ..addMultiOption(
-          'platform',
-          allowed: _platforms,
-          defaultsTo: _platforms,
-        )
-        ..addOption('dir', defaultsTo: '.', help: 'Project root.')
-        ..addFlag('cache', defaultsTo: true, help: _cacheHelp),
+        ..addCommand('clean')
+        ..addCommand('path'),
     );
 
   final ArgResults opts;
   try {
     opts = parser.parse(args);
   } on FormatException catch (e) {
-    stderr.writeln('${e.message}\n\n$_usage\n${parser.usage}');
-    exit(64);
+    _usageError(e.message, parser);
   }
   final cmd = opts.command;
+  if (opts.flag('version')) {
+    stdout.writeln(packageVersion);
+    return;
+  }
   if (opts.flag('help') || cmd == null) {
     stdout.writeln('$_usage\n${parser.usage}');
     return;
   }
+  if (cmd.name == 'cache') return _cache(cmd);
 
-  final dir = cmd.option('dir')!;
-  final cache = cmd.flag('cache') ? defaultCacheDir() : null;
-  Set<String>? deps;
-  if (cmd.name == 'audit') {
-    final pubspec = File('$dir/pubspec.yaml');
-    if (!pubspec.existsSync()) {
-      stderr.writeln('No pubspec.yaml in $dir');
-      exit(66);
-    }
-    deps = pubspecDependencies(pubspec.readAsStringSync());
+  final pages = int.tryParse(cmd.option('pages')!);
+  if (pages == null || pages < 1) {
+    _usageError('--pages must be a positive number.', parser);
   }
+  final dir = cmd.option('dir')!;
+  final project = Project.read(Directory(dir));
+  if (cmd.name == 'audit' && !project.hasPubspec) {
+    stderr.writeln('No pubspec.yaml in $dir');
+    exit(66);
+  }
+  final asked = cmd.multiOption('platform');
+  final platforms = asked.contains('all')
+      ? trendPlatforms
+      : asked.isNotEmpty
+      ? [
+          for (final p in trendPlatforms)
+            if (asked.contains(p)) p,
+        ]
+      : project.targets.isNotEmpty
+      ? project.targets
+      : cmd.name == 'audit'
+      ? trendPlatforms
+      : ['ios'];
+  if (cmd.name == 'find' && cmd.option('out') != null && platforms.length > 1) {
+    _usageError('--out needs a single --platform.', parser);
+  }
+
   final client = http.Client();
+  final finder = TrendFinder(
+    PubApi(client, cache: cmd.flag('cache') ? defaultCacheDir() : null),
+    project: project,
+    pages: pages,
+    log: stderr.writeln,
+  );
   try {
-    if (deps == null) {
-      await _findAndWrite(client, cache, cmd, dir);
-    } else if (!await _audit(
-      client,
-      cache,
-      deps,
-      cmd.multiOption('platform'),
-    )) {
+    if (cmd.name == 'find') {
+      await _find(finder, cmd, dir, platforms);
+    } else if (!await _audit(finder, cmd, project, platforms)) {
       exitCode = 1;
     }
+  } on Exception catch (e) {
+    if (!isNetworkError(e)) rethrow;
+    stderr.writeln(
+      'native_trend: could not reach pub.dev ($e).\n'
+      'Check your connection and try again.',
+    );
+    exitCode = 69;
   } finally {
     client.close();
   }
 }
 
-Future<void> _findAndWrite(
-  http.Client client,
-  Directory? cache,
+Never _usageError(String message, ArgParser parser) {
+  stderr.writeln('$message\n\n$_usage\n${parser.usage}');
+  exit(64);
+}
+
+Map<String, Object?> _envelope(Map<String, Object?> body) => {
+  'schema': 1,
+  'tool': 'native_trend',
+  'version': packageVersion,
+  'checkedAt': DateTime.now().toUtc().toIso8601String(),
+  ...body,
+};
+
+Future<void> _find(
+  TrendFinder finder,
   ArgResults cmd,
   String dir,
+  List<String> platforms,
 ) async {
-  final platform = cmd.option('platform')!;
-  final (ranked, context) = await _find(client, cache, platform);
-  stdout.writeln(renderText(ranked));
-
-  final rel = cmd.option('out') ?? '.ai/native_trend_$platform.md';
-  final out = File('$dir/$rel');
-  out.parent.createSync(recursive: true);
-  out.writeAsStringSync(context);
-  stdout.writeln('\nWrote ${out.path}');
-  final topic = platform == 'android'
-      ? 'Material 3 Expressive'
-      : 'Liquid Glass';
-  for (final name in cmd.multiOption('link')) {
-    final target = File('$dir/$name');
-    final text = target.existsSync() ? target.readAsStringSync() : '';
-    if (text.contains(rel)) continue;
-    final sep = text.isEmpty ? '' : (text.endsWith('\n') ? '\n' : '\n\n');
-    target.writeAsStringSync(
-      '$text${sep}Read `$rel` before adding or changing $topic UI.\n',
+  final json = cmd.flag('json');
+  // With --json, stdout carries only the JSON.
+  final info = json ? stderr : stdout;
+  final results = <Map<String, Object?>>[];
+  for (final platform in platforms) {
+    final result = await finder.find(platform);
+    if (!json) {
+      if (platforms.length > 1) stdout.writeln('\n$platform');
+      stdout.writeln(renderText(result.ranked));
+    }
+    final rel = cmd.option('out') ?? '.ai/native_trend_$platform.md';
+    final out = writeContext(dir, rel, result.context);
+    info.writeln('${json ? '' : '\n'}Wrote ${out.path}');
+    final topic = platform == 'android'
+        ? 'Material 3 Expressive'
+        : 'Liquid Glass';
+    for (final name in cmd.multiOption('link')) {
+      final linked = linkContext(dir, name, rel, topic);
+      if (linked != null) info.writeln('Linked from ${linked.path}');
+    }
+    results.add({...result.toJson(), 'output': rel});
+  }
+  if (json) {
+    stdout.writeln(
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert(_envelope({'results': results})),
     );
-    stdout.writeln('Linked from ${target.path}');
   }
 }
 
 /// Returns true when every matching dependency is worth keeping.
 Future<bool> _audit(
-  http.Client client,
-  Directory? cache,
-  Set<String> deps,
+  TrendFinder finder,
+  ArgResults cmd,
+  Project project,
   List<String> platforms,
 ) async {
-  var clean = true;
-  for (final platform in platforms) {
-    final matched = (await _candidateNames(
-      client,
-      platform,
-    )).intersection(deps);
-    if (matched.isEmpty) {
-      stdout.writeln(renderAudit(platform, const []));
-      continue;
-    }
-    final (ranked, _) = await _find(client, cache, platform);
-    final ranks = {for (final c in ranked) c.name};
-    // Unranked matches are either search noise or discontinued.
-    final discontinued = <String, String?>{};
-    for (final name in matched.difference(ranks)) {
-      try {
-        final r = await fetchPackage(client, name);
-        if (r.package['isDiscontinued'] == true) {
-          discontinued[name] = r.package['replacedBy'] as String?;
-        }
-      } on Exception catch (e) {
-        stderr.writeln('skip $name: $e');
-      }
-    }
-    final findings = auditDependencies(
-      deps,
-      ranked,
-      discontinued: discontinued,
+  final deps = project.dependencies;
+  final depData = await finder.fetchDeps(deps);
+  final results = [
+    for (final platform in platforms)
+      await finder.audit(platform, deps, depData),
+  ];
+  final clean = results.every((r) => r.clean);
+  if (cmd.flag('json')) {
+    stdout.writeln(
+      const JsonEncoder.withIndent('  ').convert(
+        _envelope({
+          'clean': clean,
+          'results': [for (final r in results) r.toJson()],
+        }),
+      ),
     );
-    stdout.writeln(renderAudit(platform, findings));
-    if (findings.any((f) => !f.ok)) clean = false;
+  } else {
+    for (final r in results) {
+      stdout.writeln(renderAudit(r.platform, r.findings));
+    }
   }
   return clean;
 }
 
-/// Package names worth fetching for [platform], before any filtering.
-Future<Set<String>> _candidateNames(
-  http.Client client,
-  String platform,
-) async => switch (platform) {
-  'ios' => {...await search(client, glassQuery)},
-  'macos' => {...macosGlassSeeds, ...await search(client, macosGlassQuery)},
-  _ => {
-    officialMaterial,
-    for (final q in expressiveQueries) ...await search(client, q),
-  },
-};
-
-Future<(List<Candidate>, String)> _find(
-  http.Client client,
-  Directory? cache,
-  String platform,
-) => platform == 'android'
-    ? _expressive(client, cache)
-    : _glass(client, cache, platform);
-
-Future<(List<Candidate>, String)> _glass(
-  http.Client client,
-  Directory? cache,
-  String platform,
-) async {
-  final names = await _candidateNames(client, platform);
-  final out = <Candidate>[];
-  for (final r in await _fetchAll(client, names)) {
-    final String? archive;
-    try {
-      archive = await _archiveIfPlugin(client, cache, r.package, platform);
-    } on Exception catch (e) {
-      stderr.writeln('skip ${r.package['name']}: $e');
-      continue;
-    }
-    out.add(
-      Candidate.fromJson(
-        package: r.package,
-        score: r.score,
-        kind: classifyGlass(archive, platform: platform),
-      ),
+void _cache(ArgResults cmd) {
+  final dir = defaultCacheDir();
+  if (dir == null) {
+    stderr.writeln(
+      'No cache directory: set HOME (or LOCALAPPDATA on Windows).',
     );
+    exit(78);
   }
-  final ranked = rank(out);
-  return (
-    ranked,
-    platform == 'ios'
-        ? renderGlassContext(ranked)
-        : renderMacosGlassContext(ranked),
-  );
-}
-
-Future<(List<Candidate>, String)> _expressive(
-  http.Client client,
-  Directory? cache,
-) async {
-  final names = await _candidateNames(client, 'android');
-  final out = <Candidate>[];
-  var officialOptIn = false;
-  for (final r in await _fetchAll(client, names)) {
-    final name = r.package['name'];
-    final isOfficial = name == officialMaterial;
-    if (!isOfficial && !isExpressiveRelated(r.package)) continue;
-    final String? archive;
-    try {
-      archive = isOfficial
-          ? await _archive(client, cache, r.package)
-          : await _archiveIfPlugin(client, cache, r.package, 'android');
-    } on Exception catch (e) {
-      stderr.writeln('skip $name: $e');
-      continue;
-    }
-    if (isOfficial) officialOptIn = styleVariantWired(archive!);
-    out.add(
-      Candidate.fromJson(
-        package: r.package,
-        score: r.score,
-        kind: classifyExpressive(r.package, archiveText: archive),
-      ),
-    );
+  switch (cmd.command?.name) {
+    case 'path':
+      stdout.writeln(dir.path);
+    case 'clean':
+      final bytes = cleanCache(dir);
+      stdout.writeln(
+        'Removed ${(bytes / 1e6).toStringAsFixed(1)} MB from ${dir.path}',
+      );
+    default:
+      stderr.writeln('Usage: native_trend cache clean|path');
+      exit(64);
   }
-  final ranked = rank(out);
-  return (
-    ranked,
-    renderExpressiveContext(ranked, officialOptIn: officialOptIn),
-  );
 }
-
-/// Fetches pub.dev data for [names], dropping failures and discontinued ones.
-Future<List<({Map<String, dynamic> package, Map<String, dynamic> score})>>
-_fetchAll(http.Client client, Iterable<String> names) async {
-  final fetched = await Future.wait(
-    names.map((n) async {
-      try {
-        return await fetchPackage(client, n);
-      } on Exception catch (e) {
-        stderr.writeln('skip $n: $e');
-        return null;
-      }
-    }),
-  );
-  return [
-    for (final r in fetched.nonNulls)
-      if (r.package['isDiscontinued'] != true) r,
-  ];
-}
-
-Future<String> _archive(
-  http.Client client,
-  Directory? cache,
-  Map<String, dynamic> package,
-) {
-  stderr.writeln('scanning ${package['name']} ...');
-  return fetchArchiveText(
-    client,
-    package['latest']['archive_url'] as String,
-    cache: cache,
-  );
-}
-
-Future<String?> _archiveIfPlugin(
-  http.Client client,
-  Directory? cache,
-  Map<String, dynamic> package,
-  String platform,
-) async => isPluginFor(package, platform)
-    ? await _archive(client, cache, package)
-    : null;

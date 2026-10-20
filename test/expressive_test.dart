@@ -53,9 +53,29 @@ void main() {
   });
 
   test('styleVariantWired detects the ThemeData field, not the enum', () {
-    expect(styleVariantWired('enum StyleVariant { material3 }'), isFalse);
-    expect(styleVariantWired('final StyleVariant? styleVariant;'), isTrue);
-    expect(styleVariantWired('StyleVariant get styleVariant =>'), isTrue);
+    String theme(String body) =>
+        'class ThemeData with Diagnosticable {\n'
+        '$body\n}\nenum StyleVariant { material3 }\n';
+    expect(styleVariantWired(theme('final Brightness brightness;')), isFalse);
+    expect(
+      styleVariantWired(theme('final StyleVariant? styleVariant;')),
+      isTrue,
+    );
+    expect(
+      styleVariantWired(theme('StyleVariant get styleVariant =>')),
+      isTrue,
+    );
+  });
+
+  test('styleVariantWired ignores widgets with their own styleVariant', () {
+    // material_ui 1.7.0 and 1.8.0: IconButton has the field, ThemeData doesn't.
+    const source =
+        'class ThemeData with Diagnosticable {\n'
+        '  final Brightness brightness;\n}\n'
+        'class _IconButtonM3 extends StatelessWidget {\n'
+        '  final StyleVariant styleVariant;\n}\n';
+    expect(styleVariantWired(source), isFalse);
+    expect(styleVariantWired('final StyleVariant? styleVariant;'), isFalse);
   });
 
   test('rank: official, native, on material_ui, then the rest', () {

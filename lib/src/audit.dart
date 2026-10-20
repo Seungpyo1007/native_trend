@@ -1,14 +1,4 @@
-import 'package:yaml/yaml.dart';
-
 import 'candidate.dart';
-
-/// Names under `dependencies` in a pubspec.yaml. Dev dependencies are left
-/// out: they don't ship UI.
-Set<String> pubspecDependencies(String pubspecYaml) {
-  final doc = loadYaml(pubspecYaml);
-  final deps = doc is Map ? doc['dependencies'] : null;
-  return deps is Map ? {for (final k in deps.keys) k.toString()} : {};
-}
 
 /// One dependency checked against a platform's ranking.
 class AuditFinding {
@@ -35,22 +25,40 @@ class AuditFinding {
 
   /// True when the dependency is worth keeping.
   bool get ok => !discontinued && candidate!.kind.usable;
+
+  /// The `--json` form. See the README for the schema.
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'ok': ok,
+    'kind': candidate?.kind.name,
+    'label': candidate?.kind.label,
+    'discontinued': discontinued,
+    'replacedBy': replacedBy,
+    'alternatives': [for (final c in alternatives) c.name],
+  };
 }
 
 /// Checks [deps] against one platform's [ranked] candidates. Dependencies
-/// that aren't in the ranking are ignored unless listed in [discontinued],
+/// that aren't in the ranking are ignored unless they are in [direct]
+/// (classified on their own because they look relevant) or [discontinued],
 /// which maps each discontinued dependency to pub.dev's replacement, if any.
 List<AuditFinding> auditDependencies(
   Set<String> deps,
   List<Candidate> ranked, {
+  List<Candidate> direct = const [],
   Map<String, String?> discontinued = const {},
 }) {
   final alternatives = [
     for (final c in ranked)
       if (c.kind.usable && !deps.contains(c.name)) c,
   ].take(2).toList();
+  final ranks = {for (final c in ranked) c.name};
   return [
-    for (final c in ranked)
+    for (final c in [
+      ...ranked,
+      for (final d in direct)
+        if (!ranks.contains(d.name)) d,
+    ])
       if (deps.contains(c.name))
         AuditFinding(
           name: c.name,
